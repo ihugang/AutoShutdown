@@ -2,6 +2,8 @@
 [![license](https://img.shields.io/github/license/ihugang/AutoShutdown)]()
 [![platform](https://img.shields.io/badge/platform-Windows(x64/ARM64)-lightgrey)]()
 [![language](https://img.shields.io/badge/language-golang-orange)]()
+![visitors](https://visitor-badge.laobi.icu/badge?page_id=ihugang.AutoShutdown)
+
 > 🌐 [简体中文文档 / 中文版说明](./README.zh-Hans.md)
 # AutoShutdown
 

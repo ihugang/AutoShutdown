@@ -2,6 +2,7 @@
 [![license](https://img.shields.io/github/license/ihugang/AutoShutdown)]()
 [![platform](https://img.shields.io/badge/platform-Windows(x64/ARM64)-lightgrey)]()
 [![language](https://img.shields.io/badge/language-golang-orange)]()
+![visitors](https://visitor-badge.laobi.icu/badge?page_id=ihugang.AutoShutdown)
 > 🌐 [View this README in English](./README.md)
 
 
