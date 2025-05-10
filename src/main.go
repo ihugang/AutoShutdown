@@ -1,9 +1,9 @@
 //go:build windows
 // +build windows
 
-// AutoShutdown - Windows系统专用的自动关机/休眠工具
-// 支持定时操作与远程控制（TCP/UDP）
-// 仅适用于Windows操作系统
+// AutoShutdown - Automatic shutdown/hibernate tool for Windows
+// Supports scheduled operations and remote control (TCP/UDP)
+// Only for Windows operating system
 package main
 
 import (
@@ -24,19 +24,27 @@ import (
 	"github.com/kardianos/service"
 )
 
+const (
+	// Version information
+	VERSION     = "1.00"
+	VERSION_DATE = "2025-05-11"
+)
+
 var (
 	arg                  string
 	tcpPort              string
 	udpPort              string
 	remoteControlEnabled bool
-	operationMode        string = "hibernate" // 默认操作模式: shutdown(关机), hibernate(休眠), reboot(重启), logoff(注销)
+	showVersion          bool
+	language             string
+	operationMode        string = "hibernate" // Default operation mode: shutdown, hibernate, reboot, logoff
 
-	// 自动关机时间设置
-	shutdownStartHour   int        = 22 // 开始时间（小时）
-	shutdownStartMinute int        = 0  // 开始时间（分钟）
-	shutdownEndHour     int        = 23 // 结束时间（小时）
-	shutdownEndMinute   int        = 59 // 结束时间（分钟）
-	shutdownMutex       sync.Mutex      // 用于保护时间设置的互斥锁
+	// Automatic shutdown time settings
+	shutdownStartHour   int        = 22 // Start time (hour)
+	shutdownStartMinute int        = 0  // Start time (minute)
+	shutdownEndHour     int        = 23 // End time (hour)
+	shutdownEndMinute   int        = 59 // End time (minute)
+	shutdownMutex       sync.Mutex      // Mutex for protecting time settings
 )
 
 type program struct{}
@@ -62,18 +70,39 @@ func (p *program) Stop(s service.Service) error {
 }
 
 func init() {
+	// Initialize random number generator
+	rand.Seed(time.Now().UnixNano())
+	
+	// Parse command line flags
 	flag.StringVar(&arg, "uFlags", "hibernate", "shutdown hibernate logoff reboot")
 	flag.StringVar(&tcpPort, "tcp", "2200", "TCP port for remote control")
 	flag.StringVar(&udpPort, "udp", "2200", "UDP port for remote control")
 	flag.BoolVar(&remoteControlEnabled, "remote", true, "Enable remote control")
 	flag.StringVar(&operationMode, "mode", "hibernate", "Operation mode: shutdown, hibernate, reboot, logoff")
+	flag.BoolVar(&showVersion, "version", false, "Show version information")
+	flag.StringVar(&language, "lang", "en", "Language (en, zh-Hans)")
 }
 
 func main() {
+	// Parse command line arguments
+	flag.Parse()
+	
+	// Set language
+	if language != "" {
+		SetLanguage(language)
+	}
+	
+	// Show version information
+	if showVersion {
+		fmt.Printf(T("version_info", T("app_name"), VERSION, VERSION_DATE) + "\n")
+		fmt.Println(T("developed_by"))
+		os.Exit(0)
+	}
+	
 	svcConfig := &service.Config{
-		Name:        "EarlySleepService",                          //服务显示名称
-		DisplayName: "EarlySleep",                                 //服务名称
-		Description: "If u are a student,u should sleep earlier.", //服务描述
+		Name:        "EarlySleepService",                          // Service display name
+		DisplayName: "EarlySleep",                                 // Service name
+		Description: "If u are a student,u should sleep earlier.", // Service description
 		Option: service.KeyValue{
 			"StartType": "automatic",
 		},
@@ -121,10 +150,7 @@ func main() {
 
 }
 
-func init() {
-	// 初始化随机数生成器
-	rand.Seed(time.Now().UnixNano())
-}
+
 
 func doIt() {
 	// 记录上次检测到进入时间范围的时间
@@ -212,35 +238,34 @@ func doIt() {
 }
 
 func shutdown() {
-	log.Println("执行关机操作")
+	log.Println(T("executing_operation", T("mode_shutdown")))
 	getPrivileges()
 	ExitWindowsEx(EWX_SHUTDOWN, 0)
 }
 
 func hibernate() {
-	log.Println("执行休眠操作")
-
-	// 使用系统命令执行休眠
+	log.Println(T("executing_operation", T("mode_hibernate")))
+	// Use system command to execute hibernate
 	cmd := exec.Command("rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0")
 	err := cmd.Run()
 	if err != nil {
-		log.Printf("休眠命令执行失败: %v\n", err)
+		log.Printf(T("log_hibernate_failed", err))
 
-		// 如果休眠失败，尝试使用关机
-		log.Println("尝试关机...")
+		// If hibernate fails, try to shutdown
+		log.Println(T("hibernate_failed"))
 		getPrivileges()
 		ExitWindowsEx(EWX_SHUTDOWN, 0)
 	}
 }
 
 func reboot() {
-	log.Println("执行重启操作")
+	log.Println(T("executing_operation", T("mode_reboot")))
 	getPrivileges()
 	ExitWindowsEx(EWX_REBOOT, 0)
 }
 
 func logoff() {
-	log.Println("执行注销操作")
+	log.Println(T("executing_operation", T("mode_logoff")))
 	getPrivileges()
 	ExitWindowsEx(EWX_LOGOFF, 0)
 }
@@ -262,19 +287,19 @@ func performOperation(mode string) {
 	}
 }
 
-// 获取操作模式的中文名称
+// Get localized operation mode name
 func getOperationName(mode string) string {
 	switch mode {
 	case "shutdown":
-		return "关机"
+		return T("mode_shutdown")
 	case "hibernate":
-		return "休眠"
+		return T("mode_hibernate")
 	case "reboot":
-		return "重启"
+		return T("mode_reboot")
 	case "logoff":
-		return "注销"
+		return T("mode_logoff")
 	default:
-		return "休眠"
+		return mode
 	}
 }
 
@@ -289,22 +314,22 @@ func getPrivileges() {
 	AdjustTokenPrivileges(hToken, false, &tkp, 0, nil, nil)
 }
 
-// 启动TCP服务器进行远程控制
+// Start TCP server for remote control
 func startTCPServer() {
 	addr := fmt.Sprintf(":%s", tcpPort)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Printf("TCP服务器启动失败: %v\n", err)
+		log.Printf("TCP server start failed: %v\n", err)
 		return
 	}
 	defer listener.Close()
 
-	log.Printf("TCP远程控制服务器已启动，监听端口 %s\n", tcpPort)
+	log.Printf(T("log_tcp_server_started", tcpPort))
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("接受连接失败: %v\n", err)
+			log.Printf(T("log_accept_failed", err))
 			continue
 		}
 
@@ -312,18 +337,18 @@ func startTCPServer() {
 	}
 }
 
-// 处理TCP连接
+// Handle TCP connection
 func handleTCPConnection(conn net.Conn) {
 	defer conn.Close()
 
-	log.Printf("新的TCP连接来自: %s\n", conn.RemoteAddr().String())
+	log.Printf(T("log_new_tcp_connection", conn.RemoteAddr().String()))
 	
-	// 显示欢迎信息和交互菜单
+	// Show welcome message and interactive menu
 	showWelcomeMenu(conn)
 
 	reader := bufio.NewReader(conn)
 	
-	// 用于跟踪当前状态
+	// Track current state
 	var waitingForStartTime bool = false
 	var waitingForEndTime bool = false
 	
@@ -333,10 +358,10 @@ func handleTCPConnection(conn net.Conn) {
 			conn.Write([]byte("\n请输入命令或菜单选项 [1-9]: "))
 		}
 		
-		// 读取用户输入
+		// Read user input
 		cmd, err := reader.ReadString('\n')
 		if err != nil {
-			log.Printf("读取命令失败: %v\n", err)
+			log.Printf(T("log_command_read_failed", err))
 			break
 		}
 
@@ -396,30 +421,30 @@ func handleTCPConnection(conn net.Conn) {
 	}
 }
 
-// 显示欢迎菜单
+// Show welcome menu
 func showWelcomeMenu(conn net.Conn) {
 	// 获取当前状态
 	shutdownMutex.Lock()
-	status := fmt.Sprintf("当前时间范围: %02d:%02d - %02d:%02d | 操作模式: %s", 
+	status := T("current_status", 
 		shutdownStartHour, shutdownStartMinute, shutdownEndHour, shutdownEndMinute,
-		getOperationName(operationMode))
+		getOperationName(operationMode), VERSION)
 	shutdownMutex.Unlock()
 	
 	// 构建菜单
-	menu := fmt.Sprintf(`
-╔═══════════════════════════════════════════════════════════════╗
-║                 AutoShutdown 远程控制系统                  ║
-║                                                              ║
-║  %s  ║
-╠═══════════════════════════════════════════════════════════════╣
-║  [1] 查看系统状态      [2] 立即休眠      [3] 立即关机  ║
-║  [4] 立即重启          [5] 立即注销      [6] 设置休眠模式  ║
-║  [7] 设置关机模式      [8] 设置开始时间  [9] 设置结束时间  ║
-║                                                              ║
-║  输入命令或菜单选项编号，输入 'menu' 再次显示此菜单      ║
-║  输入 'help' 查看全部可用命令                            ║
-╚═══════════════════════════════════════════════════════════════╝
-`, status)
+	menu := T("welcome_title") + "\n"
+	menu += status + "\n\n"
+	menu += fmt.Sprintf(T("menu_item"), 1, T("menu_shutdown")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 2, T("menu_hibernate")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 3, T("menu_reboot")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 4, T("menu_logoff")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 5, T("menu_status")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 6, T("menu_set_start_time")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 7, T("menu_set_end_time")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 8, T("menu_set_mode")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 9, T("menu_language")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 10, T("menu_help")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 0, T("menu_exit")) + "\n\n"
+	menu += T("menu_prompt")
 	
 	// 发送菜单到客户端
 	conn.Write([]byte(menu))
@@ -451,149 +476,152 @@ func getCommandFromMenuOption(option string) string {
 	}
 }
 
-// 启动UDP服务器进行远程控制
+// Start UDP server for remote control
 func startUDPServer() {
 	addr := fmt.Sprintf(":%s", udpPort)
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		log.Printf("解析UDP地址失败: %v\n", err)
+		log.Printf(T("log_udp_addr_failed", err))
 		return
 	}
 
 	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
-		log.Printf("UDP服务器启动失败: %v\n", err)
+		log.Printf(T("log_udp_listen_failed", err))
 		return
 	}
 	defer conn.Close()
 
-	log.Printf("UDP远程控制服务器已启动，监听端口 %s\n", udpPort)
+	log.Printf(T("log_udp_server_started", udpPort))
 
 	buf := make([]byte, 1024)
 	for {
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			log.Printf("读取UDP数据失败: %v\n", err)
+			log.Printf(T("log_udp_read_failed", err))
 			continue
 		}
 
 		cmd := strings.TrimSpace(string(buf[:n]))
-		log.Printf("收到来自 %s 的UDP命令: %s\n", addr.String(), cmd)
+		log.Printf(T("log_udp_command", addr.String(), cmd))
 
 		response := processCommand(cmd)
 		conn.WriteToUDP([]byte(response), addr)
 	}
 }
 
-// 处理远程命令
+// Process remote commands
 func processCommand(cmd string) string {
-	// 分割命令和参数
+	// Split command and parameters
 	parts := strings.Fields(strings.ToLower(cmd))
 	if len(parts) == 0 {
-		return "请输入命令"
+		return T("enter_command")
 	}
 
 	mainCmd := parts[0]
 	switch mainCmd {
+	case "version":
+		return T("version_info", T("app_name"), VERSION, VERSION_DATE)
+		
 	case "settime_start_menu":
-		return "请输入开始时间（格式为 HH:MM），例如 22:00"
+		return T("enter_start_time")
 		
 	case "settime_end_menu":
-		return "请输入结束时间（格式为 HH:MM），例如 06:00"
+		return T("enter_end_time")
 	case "shutdown":
 		go shutdown()
-		return "正在执行关机操作"
+		return T("operation_successful", T("mode_shutdown"))
 
 	case "hibernate":
-		go hibernate()
-		return "正在执行休眠操作"
+		log.Println(T("executing_operation", T("mode_hibernate")))
+		hibernate()
+		return T("operation_successful", T("mode_hibernate"))
 
 	case "reboot":
 		go reboot()
-		return "正在执行重启操作"
+		return T("operation_successful", T("mode_reboot"))
 
 	case "logoff":
 		go logoff()
-		return "正在执行注销操作"
+		return T("operation_successful", T("mode_logoff"))
 
 	case "setmode":
-		if len(parts) != 2 {
-			return "格式错误，正确的格式是: setmode [shutdown|hibernate|reboot|logoff]"
+		if len(parts) < 2 {
+			return T("invalid_mode")
 		}
-
-		mode := parts[1]
-		if mode != "shutdown" && mode != "hibernate" && mode != "reboot" && mode != "logoff" {
-			return "无效的操作模式，必须是: shutdown, hibernate, reboot 或 logoff"
+		
+		newMode := parts[1]
+		if newMode != "shutdown" && newMode != "hibernate" && newMode != "reboot" && newMode != "logoff" {
+			return T("invalid_mode")
 		}
-
-		shutdownMutex.Lock()
-		operationMode = mode
-		shutdownMutex.Unlock()
-		return fmt.Sprintf("操作模式已设置为: %s", getOperationName(mode))
+		
+		operationMode = newMode
+		return T("mode_set_success", getOperationName(newMode))
 
 	case "status":
 		shutdownMutex.Lock()
-		status := fmt.Sprintf("系统状态: 正常运行\n当前时间: %s\n时间范围: %02d:%02d - %02d:%02d\n当前操作模式: %s",
-			time.Now().Format("2006-01-02 15:04:05"),
+		status := T("current_status", 
 			shutdownStartHour, shutdownStartMinute, shutdownEndHour, shutdownEndMinute,
-			getOperationName(operationMode))
+			getOperationName(operationMode), VERSION)
 		shutdownMutex.Unlock()
 		return status
 
 	case "help":
-		return `可用命令:
-- shutdown: 关闭计算机
-- hibernate: 休眠计算机
-- reboot: 重启计算机
-- logoff: 注销当前用户
-- setmode [mode]: 设置操作模式 (shutdown/hibernate/reboot/logoff)
-- status: 查看系统状态
-- settime start HH:MM: 设置开始时间
-- settime end HH:MM: 设置结束时间
-- help: 显示帮助信息`
+		return T("help_text")
 
 	case "settime":
-		if len(parts) != 3 {
-			return "格式错误，正确的格式是: settime [start|end] HH:MM"
+		if len(parts) < 3 {
+			return T("invalid_time_format")
 		}
-
-		timeType := parts[1]  // start 或 end
+		
+		timeType := parts[1] // start or end
 		timeValue := parts[2] // HH:MM
-
-		// 解析时间格式
+		
+		// Parse time
 		timeParts := strings.Split(timeValue, ":")
 		if len(timeParts) != 2 {
-			return "时间格式错误，应为 HH:MM"
+			return T("invalid_time_format")
 		}
-
-		hour, err := strconv.Atoi(timeParts[0])
-		if err != nil || hour < 0 || hour > 23 {
-			return "小时格式错误，应为 0-23 之间的数字"
+		
+		hour, err1 := strconv.Atoi(timeParts[0])
+		minute, err2 := strconv.Atoi(timeParts[1])
+		
+		if err1 != nil || err2 != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+			return T("invalid_time_format")
 		}
-
-		minute, err := strconv.Atoi(timeParts[1])
-		if err != nil || minute < 0 || minute > 59 {
-			return "分钟格式错误，应为 0-59 之间的数字"
-		}
-
-		// 设置时间
+		
+		// Set time
 		shutdownMutex.Lock()
+		defer shutdownMutex.Unlock()
+		
 		if timeType == "start" {
 			shutdownStartHour = hour
 			shutdownStartMinute = minute
-			shutdownMutex.Unlock()
-			return fmt.Sprintf("关机开始时间已设置为 %02d:%02d", hour, minute)
+			return T("time_set_success", T("menu_set_start_time"), hour, minute)
 		} else if timeType == "end" {
 			shutdownEndHour = hour
 			shutdownEndMinute = minute
-			shutdownMutex.Unlock()
-			return fmt.Sprintf("关机结束时间已设置为 %02d:%02d", hour, minute)
+			return T("time_set_success", T("menu_set_end_time"), hour, minute)
 		} else {
-			shutdownMutex.Unlock()
-			return "时间类型错误，应为 'start' 或 'end'"
+			return T("invalid_time_type")
 		}
 
+	case "language":
+		if len(parts) < 2 {
+			return T("please_specify_language")
+		}
+		
+		langCode := parts[1]
+		if langCode != "en" && langCode != "zh-Hans" {
+			return T("invalid_language")
+		}
+		
+		SetLanguage(langCode)
+		
+		// Use the new language to respond
+		return T("language_changed", GetLanguageName(langCode))
+
 	default:
-		return "未知命令，请使用 'help' 查看可用命令"
+		return T("unknown_command")
 	}
 }
