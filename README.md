@@ -1,6 +1,6 @@
 [![version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
 [![license](https://img.shields.io/github/license/ihugang/AutoShutdown)]()
-[![platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
+[![platform](https://img.shields.io/badge/platform-Windows(x64/ARM64)-lightgrey)]()
 [![language](https://img.shields.io/badge/language-golang-orange)]()
 > 🌐 [简体中文文档 / 中文版说明](./README.zh-Hans.md)
 # AutoShutdown
@@ -34,13 +34,51 @@ For example, if the shutdown time is set to 22:00, the system will execute the s
 
 ## Getting Started
 
-1. Clone the repo
-   ```bash
-   git clone https://github.com/ihugang/AutoShutdown.git
-   cd AutoShutdown
-   ```
-2.	Open the project in Visual Studio and build the solution.
-3.	Configure your schedule and remote port.
+### 1. Clone the Repository
+```bash
+git clone https://github.com/ihugang/AutoShutdown.git
+cd AutoShutdown
+```
+
+### 2. Build the Project
+
+> **Note:** Since this project uses Windows-specific APIs, it is strongly recommended to build it in a Windows environment. Cross-compiling on non-Windows systems like macOS or Linux may encounter dependency issues.
+
+#### Building on Windows (Recommended)
+
+```bash
+# Install dependencies
+go mod tidy
+
+# Build for x64
+go build -o AutoShutdown-amd64.exe ./src
+
+# Build for ARM64
+set GOARCH=arm64
+go build -o AutoShutdown-arm64.exe ./src
+```
+
+#### Cross-compiling on Non-Windows Systems (May require additional configuration)
+
+```bash
+# Install dependencies
+go mod tidy
+
+# Build for Windows x64
+GOOS=windows GOARCH=amd64 go build -tags windows -o AutoShutdown-amd64.exe ./src
+
+# Build for Windows ARM64
+GOOS=windows GOARCH=arm64 go build -tags windows -o AutoShutdown-arm64.exe ./src
+```
+
+#### Recommended Build Environment
+
+- Windows 10/11 with Go 1.18 or higher
+- Visual Studio Code with Go extension
+
+### 3. Configure and Run
+
+Configure your schedule and remote port, then run the program.
 
 ## TCP/UDP Remote Control
 

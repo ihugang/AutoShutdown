@@ -1,6 +1,6 @@
 [![version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
 [![license](https://img.shields.io/github/license/ihugang/AutoShutdown)]()
-[![platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
+[![platform](https://img.shields.io/badge/platform-Windows(x64/ARM64)-lightgrey)]()
 [![language](https://img.shields.io/badge/language-golang-orange)]()
 > 🌐 [View this README in English](./README.md)
 
@@ -30,13 +30,52 @@
 例如，如果设置关机时间为 22:00，系统会在 22:00 到 22:10 之间的随机时间点执行关机或休眠操作。
 
 ## 快速开始
-1.	克隆仓库
+
+### 1. 克隆仓库
 ```bash
-    git clone https://github.com/ihugang/AutoShutdown.git
-    cd AutoShutdown
+git clone https://github.com/ihugang/AutoShutdown.git
+cd AutoShutdown
 ```
-2.	使用 Visual Studio 打开项目并编译。
-3.	配置定时规则和远程端口。
+
+### 2. 编译项目
+
+> **注意：** 由于本项目使用了 Windows 特有的 API，强烈建议在 Windows 环境下进行编译。在 macOS 或 Linux 等非 Windows 系统上交叉编译可能会遇到依赖问题。
+
+#### 在 Windows 上编译（推荐）
+
+```bash
+# 安装依赖包
+go mod tidy
+
+# 编译 x64 版本
+go build -o AutoShutdown-amd64.exe ./src
+
+# 编译 ARM64 版本
+set GOARCH=arm64
+go build -o AutoShutdown-arm64.exe ./src
+```
+
+#### 在非 Windows 系统上交叉编译（可能需要额外配置）
+
+```bash
+# 安装依赖包
+go mod tidy
+
+# 编译 Windows x64 版本
+GOOS=windows GOARCH=amd64 go build -tags windows -o AutoShutdown-amd64.exe ./src
+
+# 编译 Windows ARM64 版本
+GOOS=windows GOARCH=arm64 go build -tags windows -o AutoShutdown-arm64.exe ./src
+```
+
+#### 推荐的编译环境
+
+- Windows 10/11 + Go 1.18 或更高版本
+- Visual Studio Code + Go 插件
+
+### 3. 配置和运行
+
+配置定时规则和远程端口，然后运行程序。
 
 ## TCP/UDP 远程控制
 
