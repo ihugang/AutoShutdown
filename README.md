@@ -10,7 +10,7 @@
 
 ## Features
 
-- ⏰ Schedule automatic shutdown or sleep
+- ⏰ Schedule automatic shutdown or sleep with random delay
 - 🧠 Lightweight and runs quietly in background
 - 🌐 Remote command support via **TCP/UDP**
 - 🔒 Useful for parental control and personal PC automation
@@ -20,6 +20,17 @@
 - Enforcing screen time for kids
 - Power-saving automation
 - Remote PC shutdown in home network
+
+## Random Delay Mechanism
+
+To make automatic shutdown/hibernate operations more natural, AutoShutdown implements a random delay mechanism:
+
+- When entering the specified time range, the system will not immediately execute shutdown/hibernate
+- Instead, it randomly selects a time point within the next 1-10 minutes
+- This randomness prevents users from predicting the exact shutdown time
+- It also provides users with a buffer period to save their work
+
+For example, if the shutdown time is set to 22:00, the system will execute the shutdown or hibernate operation at a random time between 22:00 and 22:10.
 
 ## Getting Started
 
@@ -31,13 +42,86 @@
 2.	Open the project in Visual Studio and build the solution.
 3.	Configure your schedule and remote port.
 
-TCP/UDP Remote Control (Preview)
-	•	Port: Default 9527 (configurable)
-	•	Commands:
-	•	shutdown → triggers system shutdown
-	•	sleep → triggers system sleep
+## TCP/UDP Remote Control
 
-Note: Firewall rules may need to be adjusted.
+### Port Configuration
+
+- **Default TCP/UDP Port**: 2200 (configurable)
+- **Command Line Options**:
+  ```
+  AutoShutdown.exe -tcp=2200 -udp=2200
+  ```
+- **Security**: Make sure to adjust firewall rules to allow these ports
+
+### Changing Ports for Installed Service
+
+If you have already installed AutoShutdown as a Windows service, follow these steps to change the ports:
+
+1. **Stop the service**:
+   ```
+   AutoShutdown.exe stop
+   ```
+
+2. **Remove the service**:
+   ```
+   AutoShutdown.exe remove
+   ```
+
+3. **Reinstall with new ports**:
+   ```
+   AutoShutdown.exe -tcp=8080 -udp=8080 install
+   ```
+
+4. **Start the service**:
+   ```
+   AutoShutdown.exe start
+   ```
+
+Note: After changing ports, make sure to update your firewall rules accordingly.
+
+### Connection Methods
+
+#### TCP Connection (Interactive Menu)
+
+```bash
+# Windows
+telnet <target-ip> 2200
+
+# macOS (no built-in telnet)
+nc <target-ip> 2200
+
+# Linux
+telnet <target-ip> 2200
+# or
+nc <target-ip> 2200
+```
+
+#### UDP Commands
+
+```bash
+# Windows (PowerShell)
+$endpoint = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse("<target-ip>"), 2200)
+$client = New-Object System.Net.Sockets.UdpClient
+$bytes = [System.Text.Encoding]::ASCII.GetBytes("hibernate")
+$client.Send($bytes, $bytes.Length, $endpoint)
+$client.Close()
+
+# macOS/Linux
+echo "hibernate" | nc -u <target-ip> 2200
+```
+
+### Available Commands
+
+- `shutdown`: Shutdown the computer
+- `hibernate`: Hibernate the computer (default action)
+- `reboot`: Restart the computer
+- `logoff`: Log off the current user
+- `status`: View system status
+- `setmode <mode>`: Set operation mode (shutdown, hibernate, reboot, logoff)
+- `settime start HH:MM`: Set start time
+- `settime end HH:MM`: Set end time
+- `help`: Show help information
+- `menu`: Show interactive menu (TCP only)
 
 ## License
 

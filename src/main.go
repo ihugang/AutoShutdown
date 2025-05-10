@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -120,7 +121,19 @@ func main() {
 
 }
 
+func init() {
+	// 初始化随机数生成器
+	rand.Seed(time.Now().UnixNano())
+}
+
 func doIt() {
+	// 记录上次检测到进入时间范围的时间
+	var lastEnteredPeriod time.Time
+	// 记录是否已经计划了一次随机关机
+	var shutdownScheduled bool = false
+	// 记录计划的关机时间
+	var scheduledShutdownTime time.Time
+	
 	for {
 		now := time.Now()
 		hour := now.Hour()
@@ -152,16 +165,49 @@ func doIt() {
 			}
 		}
 
+		// 如果刚进入时间范围，计算随机关机时间
 		if inShutdownPeriod {
-			log.Printf("当前时间 %02d:%02d，在时间范围内（%02d:%02d-%02d:%02d），执行%s操作\n",
-				hour, minute, startHour, startMinute, endHour, endMinute, getOperationName(currentMode))
-
-			// 根据当前模式执行相应操作
-			performOperation(currentMode)
+			// 如果是新进入时间范围，或者上次进入已经超过12小时（防止时钟调整等异常情况）
+			if lastEnteredPeriod.IsZero() || now.Sub(lastEnteredPeriod) > 12*time.Hour {
+				lastEnteredPeriod = now
+				shutdownScheduled = false
+			}
+			
+			// 如果还没有计划关机时间，则计算一个随机时间
+			if !shutdownScheduled {
+				// 生成一个0-10分钟内的随机延迟
+				randomMinutes := rand.Intn(10) + 1 // 1-10分钟
+				randomSeconds := rand.Intn(60)     // 0-59秒
+				delay := time.Duration(randomMinutes)*time.Minute + time.Duration(randomSeconds)*time.Second
+				
+				// 计算关机时间
+				scheduledShutdownTime = now.Add(delay)
+				shutdownScheduled = true
+				
+				log.Printf("当前时间 %02d:%02d，在时间范围内（%02d:%02d-%02d:%02d）\n", 
+					hour, minute, startHour, startMinute, endHour, endMinute)
+				log.Printf("已计划在 %s 执行%s操作（随机延迟%d分%d秒）\n",
+					scheduledShutdownTime.Format("15:04:05"), getOperationName(currentMode), randomMinutes, randomSeconds)
+			}
+			
+			// 如果已经到了计划的关机时间，执行关机
+			if shutdownScheduled && now.After(scheduledShutdownTime) {
+				log.Printf("当前时间 %02d:%02d，已到计划的时间，执行%s操作\n",
+					hour, minute, getOperationName(currentMode))
+				
+				// 执行操作并重置状态
+				performOperation(currentMode)
+				shutdownScheduled = false
+				lastEnteredPeriod = time.Time{} // 重置为零值
+			}
+		} else {
+			// 如果不在时间范围内，重置状态
+			shutdownScheduled = false
+			lastEnteredPeriod = time.Time{} // 重置为零值
 		}
 
-		// 每分钟检查一次
-		time.Sleep(1 * time.Minute)
+		// 每10秒检查一次，以获得更精确的计时
+		time.Sleep(10 * time.Second)
 	}
 }
 

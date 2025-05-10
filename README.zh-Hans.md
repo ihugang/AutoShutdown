@@ -8,7 +8,7 @@
 🖥️ AutoShutdown 是一个适用于 Windows 的自动关机/休眠工具，支持定时操作与远程控制（TCP/UDP）。
 
 ## 功能特点
-- ⏰ 定时自动关机或休眠
+- ⭐ 定时自动关机或休眠，支持随机延迟
 - 🧠 后台运行，占用资源小
 - 🌐 支持 TCP/UDP 远程控制指令
 - 🔒 可用于家长控制孩子使用电脑时间
@@ -17,6 +17,17 @@
 - 控制孩子电脑使用时长
 - 节能降耗，定时关机
 - 局域网远程关机
+
+## 随机延迟机制
+
+为了使自动关机/休眠操作更加自然，AutoShutdown 采用了随机延迟机制：
+
+- 当进入设定的时间范围后，系统不会立即执行关机/休眠
+- 而是会随机选择接下来 1-10 分钟内的任意时间点
+- 这种随机性可以避免用户预测确切的关机时间
+- 同时也给予用户一定的缓冲时间来保存工作
+
+例如，如果设置关机时间为 22:00，系统会在 22:00 到 22:10 之间的随机时间点执行关机或休眠操作。
 
 ## 快速开始
 1.	克隆仓库
@@ -27,14 +38,86 @@
 2.	使用 Visual Studio 打开项目并编译。
 3.	配置定时规则和远程端口。
 
-## TCP/UDP 远程控制（预览功能）
-**默认端口：** 9527（可配置）
+## TCP/UDP 远程控制
 
-**支持命令：**
-- shutdown → 执行关机
-- sleep → 执行休眠
+### 端口配置
 
-注意：使用前请检查防火墙设置是否允许对应端口通信。
+- **默认 TCP/UDP 端口**: 2200（可配置）
+- **命令行选项**:
+  ```
+  AutoShutdown.exe -tcp=2200 -udp=2200
+  ```
+- **安全性**: 请确保调整防火墙规则以允许这些端口通信
+
+### 已安装服务的端口修改
+
+如果已将 AutoShutdown 安装为 Windows 服务，需要按以下步骤更改端口：
+
+1. **停止服务**：
+   ```
+   AutoShutdown.exe stop
+   ```
+
+2. **卸载服务**：
+   ```
+   AutoShutdown.exe remove
+   ```
+
+3. **使用新端口重新安装**：
+   ```
+   AutoShutdown.exe -tcp=8080 -udp=8080 install
+   ```
+
+4. **启动服务**：
+   ```
+   AutoShutdown.exe start
+   ```
+
+注意：更改端口后，请确保相应调整防火墙规则。
+
+### 连接方法
+
+#### TCP 连接（交互式菜单）
+
+```bash
+# Windows
+telnet <目标IP> 2200
+
+# macOS（无内置telnet）
+nc <目标IP> 2200
+
+# Linux
+telnet <目标IP> 2200
+# 或
+nc <目标IP> 2200
+```
+
+#### UDP 命令
+
+```bash
+# Windows (PowerShell)
+$endpoint = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse("<目标IP>"), 2200)
+$client = New-Object System.Net.Sockets.UdpClient
+$bytes = [System.Text.Encoding]::ASCII.GetBytes("hibernate")
+$client.Send($bytes, $bytes.Length, $endpoint)
+$client.Close()
+
+# macOS/Linux
+echo "hibernate" | nc -u <目标IP> 2200
+```
+
+### 可用命令
+
+- `shutdown`: 关机
+- `hibernate`: 休眠（默认操作）
+- `reboot`: 重启计算机
+- `logoff`: 注销当前用户
+- `status`: 查看系统状态
+- `setmode <mode>`: 设置操作模式（shutdown, hibernate, reboot, logoff）
+- `settime start HH:MM`: 设置开始时间
+- `settime end HH:MM`: 设置结束时间
+- `help`: 显示帮助信息
+- `menu`: 显示交互式菜单（仅TCP模式）
 
 ⸻
 
