@@ -1,4 +1,9 @@
+[![version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
+[![license](https://img.shields.io/github/license/ihugang/AutoShutdown)]()
+[![platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
+[![language](https://img.shields.io/badge/language-golang-orange)]()
 > 🌐 [View this README in English](./README.md)
+
 
 🖥️ AutoShutdown 是一个适用于 Windows 的自动关机/休眠工具，支持定时操作与远程控制（TCP/UDP）。
 
