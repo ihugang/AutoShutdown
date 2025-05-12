@@ -365,8 +365,18 @@ func doIt() {
 							now.Format("15:04:05"), warningTime.Format("15:04:05"))
 					}
 					
-					// 显示警告对话框
-					warningResult := showWarningDialog(operationMode, warningMinutes)
+					// 计算实际剩余时间（分钟）
+					remainMinutes := int(scheduledShutdownTime.Sub(now).Minutes())
+					// 如果剩余时间小于1分钟，至少显示1分钟
+					if remainMinutes < 1 {
+						remainMinutes = 1
+					}
+					if debugMode {
+						log.Printf("[DEBUG] 实际剩余时间: %d分钟", remainMinutes)
+					}
+					
+					// 显示警告对话框，传入实际剩余时间
+					warningResult := showWarningDialog(operationMode, remainMinutes)
 					warningShown = true
 					
 					if debugMode {
