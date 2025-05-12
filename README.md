@@ -16,6 +16,7 @@
 - 🧠 Lightweight and runs quietly in background
 - 🌐 Remote command support via **TCP/UDP**
 - 🔒 Useful for parental control and personal PC automation
+- ⚠️ Pre-shutdown warning dialog with configurable timing
 
 ## Use Cases
 
@@ -33,6 +34,15 @@ To make automatic shutdown/hibernate operations more natural, AutoShutdown imple
 - It also provides users with a buffer period to save their work
 
 For example, if the shutdown time is set to 22:00, the system will execute the shutdown or hibernate operation at a random time between 22:00 and 22:10.
+
+## Warning Dialog Feature
+
+AutoShutdown can display a warning dialog before performing shutdown or hibernate operations:
+
+- Gives users a chance to save their work before shutdown/hibernate
+- Configurable warning time (default: 5 minutes before operation)
+- Can be enabled/disabled via command line or remote commands
+- Users can choose to proceed with the operation or cancel it
 
 ## Getting Started
 
@@ -80,7 +90,60 @@ GOOS=windows GOARCH=arm64 go build -tags windows -o AutoShutdown-arm64.exe ./src
 
 ### 3. Configure and Run
 
-Configure your schedule and remote port, then run the program.
+Configure your schedule, remote port, and warning settings, then run the program.
+
+#### Command Line Options
+
+##### All Available Parameters
+
+| Parameter | Description | Default Value |
+|----------|---------|--------|
+| `-mode` | Operation mode: shutdown, hibernate, reboot, logoff | `hibernate` |
+| `-tcp` | TCP port for remote control | `2200` |
+| `-udp` | UDP port for remote control | `2200` |
+| `-remote` | Enable remote control | `true` |
+| `-warning` | Show warning before shutdown/hibernate | `true` |
+| `-warning-time` | Minutes to warn before shutdown/hibernate | `5` |
+| `-start-hour` | Start time hour (0-23) | `22` |
+| `-start-minute` | Start time minute (0-59) | `0` |
+| `-end-hour` | End time hour (0-23) | `23` |
+| `-end-minute` | End time minute (0-59) | `59` |
+| `-start-time` | Start time in HH:MM format, overrides start-hour and start-minute | - |
+| `-end-time` | End time in HH:MM format, overrides end-hour and end-minute | - |
+| `-lang` | Language: en, zh-Hans | `en` |
+| `-version` | Show version information | `false` |
+
+##### Usage Examples
+
+```bash
+# Basic usage with default settings
+AutoShutdown.exe
+
+# Disable warning dialog
+AutoShutdown.exe -warning=false
+
+# Change warning time to 10 minutes before shutdown
+AutoShutdown.exe -warning-time=10
+
+# Set start and end times (setting hours and minutes separately)
+AutoShutdown.exe -start-hour=21 -start-minute=30 -end-hour=6 -end-minute=30
+
+# Set time range using HH:MM format
+AutoShutdown.exe -start-time=21:30 -end-time=06:30
+
+# Full configuration example
+AutoShutdown.exe -mode=hibernate -tcp=2200 -udp=2200 -remote=true -warning=true -warning-time=5 -start-time=22:00 -end-time=06:00 -lang=en
+```
+
+##### Complete Example for Service Installation
+
+```bash
+# Install as Windows service with custom settings
+AutoShutdown.exe -mode=hibernate -warning=true -warning-time=10 -start-time=22:30 -end-time=06:30 -lang=en install
+
+# Start the service
+AutoShutdown.exe start
+```
 
 ## TCP/UDP Remote Control
 
@@ -160,6 +223,8 @@ echo "hibernate" | nc -u <target-ip> 2200
 - `setmode <mode>`: Set operation mode (shutdown, hibernate, reboot, logoff)
 - `settime start HH:MM`: Set start time
 - `settime end HH:MM`: Set end time
+- `setwarning on [minutes]`: Enable shutdown warning (optionally specify minutes)
+- `setwarning off`: Disable shutdown warning
 - `help`: Show help information
 - `menu`: Show interactive menu (TCP only)
 

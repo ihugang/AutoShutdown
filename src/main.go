@@ -8,8 +8,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -38,6 +40,11 @@ var (
 	showVersion          bool
 	language             string
 	operationMode        string = "hibernate" // Default operation mode: shutdown, hibernate, reboot, logoff
+	showWarning          bool   = true       // Whether to show warning before shutdown/hibernate
+	warningMinutes       int    = 5          // Minutes to warn before shutdown/hibernate
+	debugMode            bool   = false      // Debug mode for detailed logging
+	logFile              string = ""         // Log file path for debug mode
+	warningShown         bool   = false      // 跟踪是否已显示过警告对话框
 
 	// Automatic shutdown time settings
 	shutdownStartHour   int        = 22 // Start time (hour)
@@ -69,6 +76,10 @@ func (p *program) Stop(s service.Service) error {
 	return nil
 }
 
+// 用于解析时间字符串的变量
+var startTimeStr string
+var endTimeStr string
+
 func init() {
 	// Initialize random number generator
 	rand.Seed(time.Now().UnixNano())
@@ -81,15 +92,83 @@ func init() {
 	flag.StringVar(&operationMode, "mode", "hibernate", "Operation mode: shutdown, hibernate, reboot, logoff")
 	flag.BoolVar(&showVersion, "version", false, "Show version information")
 	flag.StringVar(&language, "lang", "en", "Language (en, zh-Hans)")
+	flag.BoolVar(&showWarning, "warning", true, "Show warning before shutdown/hibernate")
+	flag.IntVar(&warningMinutes, "warning-time", 5, "Minutes to warn before shutdown/hibernate")
+	
+	// Time range settings
+	flag.IntVar(&shutdownStartHour, "start-hour", 22, "Start hour (0-23)")
+	flag.IntVar(&shutdownStartMinute, "start-minute", 0, "Start minute (0-59)")
+	flag.IntVar(&shutdownEndHour, "end-hour", 23, "End hour (0-23)")
+	flag.IntVar(&shutdownEndMinute, "end-minute", 59, "End minute (0-59)")
+	
+	// Alternative time format
+	flag.StringVar(&startTimeStr, "start-time", "", "Start time in HH:MM format (e.g. 22:00)")
+	flag.StringVar(&endTimeStr, "end-time", "", "End time in HH:MM format (e.g. 23:59)")
+	
+	// Debug mode settings
+	flag.BoolVar(&debugMode, "debug", false, "Enable debug mode with detailed logging")
+	flag.StringVar(&logFile, "log-file", "AutoShutdown.log", "Log file path for debug mode")
 }
 
 func main() {
 	// Parse command line arguments
 	flag.Parse()
 	
+	// 处理时间字符串格式
+	if startTimeStr != "" {
+		parts := strings.Split(startTimeStr, ":")
+		if len(parts) == 2 {
+			if h, err := strconv.Atoi(parts[0]); err == nil && h >= 0 && h <= 23 {
+				shutdownStartHour = h
+			}
+			if m, err := strconv.Atoi(parts[1]); err == nil && m >= 0 && m <= 59 {
+				shutdownStartMinute = m
+			}
+		}
+	}
+	
+	if endTimeStr != "" {
+		parts := strings.Split(endTimeStr, ":")
+		if len(parts) == 2 {
+			if h, err := strconv.Atoi(parts[0]); err == nil && h >= 0 && h <= 23 {
+				shutdownEndHour = h
+			}
+			if m, err := strconv.Atoi(parts[1]); err == nil && m >= 0 && m <= 59 {
+				shutdownEndMinute = m
+			}
+		}
+	}
+	
 	// Set language
 	if language != "" {
 		SetLanguage(language)
+	}
+	
+	// 设置调试日志
+	if debugMode {
+		// 配置日志输出到文件
+		logWriter, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			fmt.Printf("无法打开日志文件: %v\n", err)
+			os.Exit(1)
+		}
+		
+		// 设置日志输出到文件和控制台
+		multiWriter := io.MultiWriter(logWriter, os.Stdout)
+		log.SetOutput(multiWriter)
+		
+		// 设置日志格式，包含时间戳
+		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+		
+		log.Println("===== 调试模式已启用 =====")
+		log.Printf("版本: %s (%s)", VERSION, VERSION_DATE)
+		log.Printf("操作模式: %s", operationMode)
+		log.Printf("时间范围: %02d:%02d - %02d:%02d", shutdownStartHour, shutdownStartMinute, shutdownEndHour, shutdownEndMinute)
+		log.Printf("警告设置: 启用=%v, 提前时间=%d分钟", showWarning, warningMinutes)
+		log.Printf("远程控制: 启用=%v, TCP端口=%s, UDP端口=%s", remoteControlEnabled, tcpPort, udpPort)
+		log.Printf("语言: %s", language)
+		log.Printf("日志文件: %s", logFile)
+		log.Println("==============================")
 	}
 	
 	// Show version information
@@ -160,10 +239,16 @@ func doIt() {
 	// 记录计划的关机时间
 	var scheduledShutdownTime time.Time
 	
+	// 调试模式下记录初始化信息
+	if debugMode {
+		log.Println("[DEBUG] doIt函数已启动，开始监控时间范围")
+	}
+	
 	for {
 		now := time.Now()
 		hour := now.Hour()
 		minute := now.Minute()
+		second := now.Second()
 
 		// 获取当前的关机时间设置
 		shutdownMutex.Lock()
@@ -173,6 +258,20 @@ func doIt() {
 		endMinute := shutdownEndMinute
 		currentMode := operationMode
 		shutdownMutex.Unlock()
+		
+		// 调试模式下每分钟记录一次当前状态
+		if debugMode && second == 0 {
+			log.Printf("[DEBUG] 当前时间: %02d:%02d:%02d", hour, minute, second)
+			log.Printf("[DEBUG] 时间范围: %02d:%02d - %02d:%02d", startHour, startMinute, endHour, endMinute)
+			log.Printf("[DEBUG] 操作模式: %s", currentMode)
+			log.Printf("[DEBUG] 警告设置: 启用=%v, 提前时间=%d分钟", showWarning, warningMinutes)
+			if shutdownScheduled {
+				log.Printf("[DEBUG] 已计划关机时间: %s", scheduledShutdownTime.Format("15:04:05"))
+				log.Printf("[DEBUG] 距离计划关机还有: %v", scheduledShutdownTime.Sub(now))
+			} else {
+				log.Printf("[DEBUG] 尚未计划关机时间")
+			}
+		}
 
 		// 检查当前时间是否在关机时间范围内
 		inShutdownPeriod := false
@@ -183,12 +282,31 @@ func doIt() {
 			if (hour > startHour || (hour == startHour && minute >= startMinute)) &&
 				(hour < endHour || (hour == endHour && minute < endMinute)) {
 				inShutdownPeriod = true
+				if debugMode {
+					log.Printf("[DEBUG] 当前时间在范围内 (同一天内时间范围)")
+				}
+			} else if debugMode {
+				log.Printf("[DEBUG] 当前时间不在范围内 (同一天内时间范围)")
+				log.Printf("[DEBUG] 检查条件: (%d > %d || (%d == %d && %d >= %d)) && (%d < %d || (%d == %d && %d < %d))", 
+					hour, startHour, hour, startHour, minute, startMinute, hour, endHour, hour, endHour, minute, endMinute)
 			}
 		} else { // 开始时间大于结束时间，跨天时间范围（如晚上22点到次日早上6点）
 			if (hour > startHour || (hour == startHour && minute >= startMinute)) ||
 				(hour < endHour || (hour == endHour && minute < endMinute)) {
 				inShutdownPeriod = true
+				if debugMode {
+					log.Printf("[DEBUG] 当前时间在范围内 (跨天时间范围)")
+				}
+			} else if debugMode {
+				log.Printf("[DEBUG] 当前时间不在范围内 (跨天时间范围)")
+				log.Printf("[DEBUG] 检查条件: (%d > %d || (%d == %d && %d >= %d)) || (%d < %d || (%d == %d && %d < %d))", 
+					hour, startHour, hour, startHour, minute, startMinute, hour, endHour, hour, endHour, minute, endMinute)
 			}
+		}
+		
+		// 调试模式下记录时间范围检查结果
+		if debugMode && second == 0 {
+			log.Printf("[DEBUG] 时间范围检查结果: inShutdownPeriod=%v", inShutdownPeriod)
 		}
 
 		// 如果刚进入时间范围，计算随机关机时间
@@ -197,6 +315,9 @@ func doIt() {
 			if lastEnteredPeriod.IsZero() || now.Sub(lastEnteredPeriod) > 12*time.Hour {
 				lastEnteredPeriod = now
 				shutdownScheduled = false
+				if debugMode {
+					log.Printf("[DEBUG] 新进入时间范围或重置状态")
+				}
 			}
 			
 			// 如果还没有计划关机时间，则计算一个随机时间
@@ -214,20 +335,75 @@ func doIt() {
 					hour, minute, startHour, startMinute, endHour, endMinute)
 				log.Printf("已计划在 %s 执行%s操作（随机延迟%d分%d秒）\n",
 					scheduledShutdownTime.Format("15:04:05"), getOperationName(currentMode), randomMinutes, randomSeconds)
+				
+				if debugMode {
+					log.Printf("[DEBUG] 计算了新的关机时间: %s", scheduledShutdownTime.Format("15:04:05"))
+					log.Printf("[DEBUG] 随机延迟: %d分%d秒", randomMinutes, randomSeconds)
+					if showWarning {
+						// 计算警告时间
+						warningTime := scheduledShutdownTime.Add(-time.Duration(warningMinutes) * time.Minute)
+						log.Printf("[DEBUG] 警告将在 %s 显示（提前%d分钟）", 
+							warningTime.Format("15:04:05"), warningMinutes)
+					} else {
+						log.Printf("[DEBUG] 警告功能已禁用")
+					}
+				}
 			}
 			
 			// 如果已经到了计划的关机时间，执行关机
-			if shutdownScheduled && now.After(scheduledShutdownTime) {
-				log.Printf("当前时间 %02d:%02d，已到计划的时间，执行%s操作\n",
-					hour, minute, getOperationName(currentMode))
+			if shutdownScheduled {
+				// 计算警告时间
+				warningTime := scheduledShutdownTime.Add(-time.Duration(warningMinutes) * time.Minute)
 				
-				// 执行操作并重置状态
-				performOperation(currentMode)
-				shutdownScheduled = false
-				lastEnteredPeriod = time.Time{} // 重置为零值
+				// 使用包级变量跟踪警告状态
+				// warningShown变量已在包级声明
+				
+				// 如果启用了警告并且当前时间已过警告时间但还未到关机时间
+				if showWarning && now.After(warningTime) && now.Before(scheduledShutdownTime) && !warningShown {
+					if debugMode {
+						log.Printf("[DEBUG] 当前时间 %s 已过警告时间 %s，准备显示警告", 
+							now.Format("15:04:05"), warningTime.Format("15:04:05"))
+					}
+					
+					// 显示警告对话框
+					warningResult := showWarningDialog(operationMode, warningMinutes)
+					warningShown = true
+					
+					if debugMode {
+						log.Printf("[DEBUG] 警告对话框结果: %v", warningResult)
+					}
+					
+					// 如果用户取消了操作
+					if !warningResult {
+						log.Printf(T("shutdown_cancelled", getOperationName(operationMode)))
+						shutdownScheduled = false
+						lastEnteredPeriod = time.Time{} // 重置为零值
+						return
+					}
+				}
+				
+				// 如果已经到了计划的关机时间
+				if now.After(scheduledShutdownTime) {
+					// 重置警告标志，为下一次关机做准备
+					warningShown = false
+					log.Printf("当前时间 %02d:%02d，已到计划的时间，执行%s操作\n",
+						hour, minute, getOperationName(currentMode))
+					
+					if debugMode {
+						log.Printf("[DEBUG] 准备执行%s操作", getOperationName(currentMode))
+					}
+					
+					// 执行操作并重置状态
+					performOperation(currentMode)
+					shutdownScheduled = false
+					lastEnteredPeriod = time.Time{} // 重置为零值
+				}
 			}
 		} else {
 			// 如果不在时间范围内，重置状态
+			if shutdownScheduled && debugMode {
+				log.Printf("[DEBUG] 不在时间范围内，重置关机计划")
+			}
 			shutdownScheduled = false
 			lastEnteredPeriod = time.Time{} // 重置为零值
 		}
@@ -272,6 +448,33 @@ func logoff() {
 
 // 根据操作模式执行相应操作
 func performOperation(mode string) {
+	// 如果启用了警告，则显示警告对话框
+	if showWarning && warningMinutes > 0 {
+		if debugMode {
+			log.Printf("[DEBUG] 显示关机前警告对话框，操作模式: %s, 提前时间: %d分钟", 
+				getOperationName(mode), warningMinutes)
+		}
+		
+		// 显示警告对话框
+		warningResult := showWarningDialog(mode, warningMinutes)
+		
+		if debugMode {
+			log.Printf("[DEBUG] 警告对话框结果: %v (真=继续, 假=取消)", warningResult)
+		}
+		
+		if !warningResult {
+			// 用户取消了操作
+			log.Printf(T("shutdown_cancelled", getOperationName(mode)))
+			return
+		}
+	} else if debugMode {
+		log.Printf("[DEBUG] 跳过警告对话框，警告功能已禁用或提前时间为0")
+	}
+
+	if debugMode {
+		log.Printf("[DEBUG] 准备执行操作: %s", getOperationName(mode))
+	}
+
 	switch mode {
 	case "shutdown":
 		shutdown()
@@ -282,7 +485,7 @@ func performOperation(mode string) {
 	case "logoff":
 		logoff()
 	default:
-		// 默认使用休眠模式
+		// 默认使用休眠
 		hibernate()
 	}
 }
@@ -423,27 +626,20 @@ func handleTCPConnection(conn net.Conn) {
 
 // Show welcome menu
 func showWelcomeMenu(conn net.Conn) {
-	// 获取当前状态
-	shutdownMutex.Lock()
-	status := T("current_status", 
-		shutdownStartHour, shutdownStartMinute, shutdownEndHour, shutdownEndMinute,
-		getOperationName(operationMode), VERSION)
-	shutdownMutex.Unlock()
-	
 	// 构建菜单
-	menu := T("welcome_title") + "\n"
-	menu += status + "\n\n"
-	menu += fmt.Sprintf(T("menu_item"), 1, T("menu_shutdown")) + "\n"
+	menu := T("welcome_title") + "\n\n"
+	menu += fmt.Sprintf(T("menu_item"), 1, T("menu_status")) + "\n"
 	menu += fmt.Sprintf(T("menu_item"), 2, T("menu_hibernate")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 3, T("menu_reboot")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 4, T("menu_logoff")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 5, T("menu_status")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 6, T("menu_set_start_time")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 7, T("menu_set_end_time")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 8, T("menu_set_mode")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 9, T("menu_language")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 10, T("menu_help")) + "\n"
-	menu += fmt.Sprintf(T("menu_item"), 0, T("menu_exit")) + "\n\n"
+	menu += fmt.Sprintf(T("menu_item"), 3, T("menu_shutdown")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 4, T("menu_reboot")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 5, T("menu_logoff")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 6, T("menu_set_mode") + " (Hibernate)") + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 7, T("menu_set_mode") + " (Shutdown)") + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 8, T("menu_set_start_time")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 9, T("menu_set_end_time")) + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 10, "启用关机警告") + "\n"
+	menu += fmt.Sprintf(T("menu_item"), 11, "禁用关机警告") + "\n"
+	menu += "\n"
 	menu += T("menu_prompt")
 	
 	// 发送菜单到客户端
@@ -510,6 +706,49 @@ func startUDPServer() {
 	}
 }
 
+// Show warning dialog, return true if user confirms to continue
+func showWarningDialog(mode string, minutes int) bool {
+	// Create warning message
+	message := T("shutdown_warning", minutes, getOperationName(mode))
+	title := T("shutdown_warning_title", getOperationName(mode))
+
+	if debugMode {
+		log.Printf("[DEBUG] 准备显示警告对话框")
+		log.Printf("[DEBUG] 标题: %s", title)
+		log.Printf("[DEBUG] 消息: %s", message)
+	}
+
+	// Use PowerShell to show dialog
+	powershellCmd := fmt.Sprintf(
+		"Add-Type -AssemblyName System.Windows.Forms; $result = [System.Windows.Forms.MessageBox]::Show('%s', '%s', 'YesNo', 'Warning'); if ($result -eq 'Yes') { exit 0 } else { exit 1 }",
+		message, title)
+
+	if debugMode {
+		log.Printf("[DEBUG] PowerShell命令: %s", powershellCmd)
+	}
+
+	cmd := exec.Command("powershell", "-Command", powershellCmd)
+	
+	// 捕获命令输出以便调试
+	if debugMode {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		log.Printf("[DEBUG] 警告对话框命令执行结果: %v", err == nil)
+		if stdout.Len() > 0 {
+			log.Printf("[DEBUG] 命令标准输出: %s", stdout.String())
+		}
+		if stderr.Len() > 0 {
+			log.Printf("[DEBUG] 命令错误输出: %s", stderr.String())
+		}
+		return err == nil
+	} else {
+		err := cmd.Run()
+		return err == nil
+	}
+}
+
 // Process remote commands
 func processCommand(cmd string) string {
 	// Split command and parameters
@@ -568,6 +807,31 @@ func processCommand(cmd string) string {
 
 	case "help":
 		return T("help_text")
+		
+	case "setwarning":
+		if len(parts) < 2 {
+			return "用法: setwarning on/off [minutes]\n例如: setwarning on 5"
+		}
+		
+		switch parts[1] {
+		case "on":
+			showWarning = true
+			// 如果指定了分钟数
+			if len(parts) >= 3 {
+				if mins, err := strconv.Atoi(parts[2]); err == nil && mins > 0 {
+					warningMinutes = mins
+					return fmt.Sprintf("警告已启用，提前%d分钟显示", warningMinutes)
+				}
+			}
+			return fmt.Sprintf("警告已启用，提前%d分钟显示", warningMinutes)
+			
+		case "off":
+			showWarning = false
+			return "警告已禁用"
+			
+		default:
+			return "用法: setwarning on/off [minutes]\n例如: setwarning on 5"
+		}
 
 	case "settime":
 		if len(parts) < 3 {
