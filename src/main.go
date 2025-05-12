@@ -718,12 +718,14 @@ func showWarningDialog(mode string, minutes int) bool {
 		log.Printf("[DEBUG] 消息: %s", message)
 	}
 
-	// Use PowerShell to show dialog
+	// 使用简单的MessageBox显示警告对话框
+	// 这样可以避免中文字符在PowerShell脚本中的编码问题
 	powershellCmd := fmt.Sprintf(
-		"Add-Type -AssemblyName System.Windows.Forms; $result = [System.Windows.Forms.MessageBox]::Show('%s', '%s', 'YesNo', 'Warning'); if ($result -eq 'Yes') { exit 0 } else { exit 1 }",
+		"Add-Type -AssemblyName System.Windows.Forms; $result = [System.Windows.Forms.MessageBox]::Show('%s', '%s', 'OK', 'Warning'); if ($result -eq 'OK') { exit 0 } else { exit 1 }",
 		message, title)
 
 	if debugMode {
+		log.Printf("[DEBUG] 使用MessageBox显示警告对话框")
 		log.Printf("[DEBUG] PowerShell命令: %s", powershellCmd)
 	}
 
